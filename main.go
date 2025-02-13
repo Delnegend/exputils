@@ -33,75 +33,82 @@ const (
 	Par2Btn     Button = "par2"
 )
 
-type MainModel struct {
-	spinner          spinner.Model
-	lastViewPath     string
-	lastViewPathChan chan string
-	isPolling        bool
-	pollTicker       *time.Ticker
+var (
+	theSpinner = spinner.New(func(m *spinner.Model) {
+		m.Spinner = spinner.MiniDot
+	})
+	lastViewPath = ""
+	isPolling    = true
+	pollTicker   = time.NewTicker(500 * time.Millisecond)
 
-	clicked Button
-	hovered Button
+	clicked = ButtonNone
+	hovered = ButtonNone
 
-	someTaskContext     context.Context
-	someTaskRunning     bool
-	someTaskRunningChan chan bool
+	taskCtx     context.Context
+	taskCancel  context.CancelFunc
+	taskRunning = false
+
+	forceRerenderChan = make(chan struct{})
+)
+
+func init() {
+	taskCtx, taskCancel = context.WithCancel(context.Background())
 }
 
-type PathUpdateMsg struct{ path string }
-type SomeTaskRunningMsg struct{ running bool }
+type MainModel struct{}
 
-func newMainModel() MainModel {
-	return MainModel{
-		spinner: spinner.New(func(m *spinner.Model) {
-			m.Spinner = spinner.MiniDot
-		}),
-		lastViewPath:     "",
-		lastViewPathChan: make(chan string),
-		isPolling:        true,
-		pollTicker:       time.NewTicker(500 * time.Millisecond),
-
-		clicked: ButtonNone,
-		hovered: ButtonNone,
-
-		someTaskContext:     context.Background(),
-		someTaskRunning:     false,
-		someTaskRunningChan: make(chan bool),
-	}
-}
+type ForceRerenderMsg struct{}
 
 func (m MainModel) Init() tea.Cmd {
 	go func() {
-		for range m.pollTicker.C {
+		for range pollTicker.C {
 			newPath, err := wexpmonitor.GetLastViewedExplorerPath()
-			if err == nil && newPath != m.lastViewPath {
-				m.lastViewPathChan <- newPath
+			if err == nil && newPath != "" && newPath != lastViewPath {
+				lastViewPath = newPath
+				forceRerenderChan <- struct{}{}
 			}
 		}
 	}()
 
 	return tea.Batch(
-		m.spinner.Tick,
+		theSpinner.Tick,
 		func() tea.Msg {
-			return PathUpdateMsg{<-m.lastViewPathChan}
-		},
-		func() tea.Msg {
-			return SomeTaskRunningMsg{<-m.someTaskRunningChan}
+			return ForceRerenderMsg{}
 		},
 	)
 }
 
+func resetRunningTask() {
+	if !taskRunning {
+		return
+	}
+	taskCancel()
+	taskRunning = false
+	forceRerenderChan <- struct{}{}
+}
+
+func spawnTask(fn func(context.Context) error) {
+	if taskRunning {
+		return
+	}
+	taskRunning = true
+	taskCtx, taskCancel = context.WithCancel(context.Background())
+
+	forceRerenderChan <- struct{}{}
+	go func() {
+		if err := fn(taskCtx); err != nil {
+			// do something
+		}
+		resetRunningTask()
+	}()
+}
+
 func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case PathUpdateMsg:
-		m.lastViewPath = msg.path
+	case ForceRerenderMsg:
 		return m, func() tea.Msg {
-			return PathUpdateMsg{<-m.lastViewPathChan}
-		}
-	case SomeTaskRunningMsg:
-		m.someTaskRunning = msg.running
-		return m, func() tea.Msg {
-			return SomeTaskRunningMsg{<-m.someTaskRunningChan}
+			<-forceRerenderChan
+			return ForceRerenderMsg{}
 		}
 	case tea.MouseMsg:
 		if msg.Action == tea.MouseActionMotion { // aka hover
@@ -116,19 +123,17 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				LossyJxlBtn:       string(LossyJxlBtn),
 				Par2Btn:           string(Par2Btn),
 			}
-
-			m.hovered = ButtonNone // Default to no hover
-
+			hovered = ButtonNone
 		scoped:
 			for button, zoneName := range buttonZones {
 				if zone.Get(zoneName).InBounds(msg) {
-					m.hovered = button
+					hovered = button
 					break scoped
 				}
 			}
 		}
 		if msg.Action == tea.MouseActionRelease {
-			m.clicked = ButtonNone
+			clicked = ButtonNone
 			return m, nil
 		}
 		// basically onClick in javascript at this point
@@ -137,99 +142,75 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		switch {
 		case zone.Get(string(DisablePollingBtn)).InBounds(msg):
-			if !m.isPolling {
+			if !isPolling {
 				break
 			}
-			m.pollTicker.Stop()
-			m.isPolling = false
-			m.clicked = DisablePollingBtn
+			pollTicker.Stop()
+			isPolling = false
+			clicked = DisablePollingBtn
 		case zone.Get(string(EnablePollingBtn)).InBounds(msg):
-			if m.isPolling {
+			if isPolling {
 				break
 			}
-			m.pollTicker.Reset(500 * time.Millisecond)
-			m.isPolling = true
-			m.clicked = EnablePollingBtn
+			pollTicker.Reset(500 * time.Millisecond)
+			isPolling = true
+			clicked = EnablePollingBtn
 		case zone.Get(string(CancelTaskBtn)).InBounds(msg):
-			if !m.someTaskRunning {
-				break
-			}
-			m.someTaskContext.Done()
-			m.someTaskContext = context.Background()
-			m.someTaskRunning = false
-			m.clicked = CancelTaskBtn
+			resetRunningTask()
+			clicked = CancelTaskBtn
 		case zone.Get(string(StartTaskBtn)).InBounds(msg):
-			if m.someTaskRunning {
-				break
-			}
-			go func() {
-				if err := tasks.ExampleTask(m.someTaskContext); err != nil {
-					fmt.Println(err)
-				} else {
-					m.someTaskContext = context.Background()
-					m.someTaskRunningChan <- false
-				}
-			}()
-			m.someTaskRunning = true
-			m.clicked = StartTaskBtn
+			spawnTask(tasks.ExampleTask)
+			clicked = StartTaskBtn
 		default:
-			m.clicked = ButtonNone
+			clicked = ButtonNone
 		}
 	case spinner.TickMsg:
 		var cmd tea.Cmd
-		m.spinner, cmd = m.spinner.Update(msg)
+		theSpinner, cmd = theSpinner.Update(msg)
 		return m, cmd
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return m, tea.Quit
 		case "c":
-			if !m.someTaskRunning {
-				break
-			}
-			m.someTaskContext.Done()
-			m.someTaskContext = context.Background()
-			m.someTaskRunning = false
-			m.clicked = CancelTaskBtn
+			resetRunningTask()
 		}
 	}
 	return m, nil
 }
 
-var (
-	btnFrame = lipgloss.NewStyle().
-			Width(24).
-			Align(lipgloss.Center).
-			Padding(0, 1).
-			Border(lipgloss.NormalBorder())
+func ButtonStyler(content string, kind Button, disabled bool) string {
+	btnFrame := lipgloss.NewStyle().
+		Width(24).
+		Align(lipgloss.Center).
+		Padding(0, 1).
+		Border(lipgloss.NormalBorder())
 
-	baseBtnStyle = btnFrame.
-			Foreground(lipgloss.Color("#FFF7DB"))
+	baseBtnStyle := btnFrame.
+		Foreground(lipgloss.Color("#FFF7DB"))
 
-	activeBtnStyle = btnFrame.
-			Background(lipgloss.Color("#F25D94")).
-			BorderBackground(lipgloss.Color("#F25D94")).
-			Foreground(lipgloss.Color("#FFF7DB")).
-			Bold(true)
+	activeBtnStyle := btnFrame.
+		Background(lipgloss.Color("#F25D94")).
+		BorderBackground(lipgloss.Color("#F25D94")).
+		Foreground(lipgloss.Color("#FFF7DB")).
+		Bold(true)
 
-	hoveredBtnStyle = btnFrame.
-			Border(lipgloss.DoubleBorder()).
-			Foreground(lipgloss.Color("#FFF7DB"))
+	hoveredBtnStyle := btnFrame.
+		Border(lipgloss.DoubleBorder()).
+		Foreground(lipgloss.Color("#FFF7DB"))
 
-	disabledBtnStyle = btnFrame.
-				BorderForeground(lipgloss.Color("#525252")).
-				Foreground(lipgloss.Color("#525252"))
-)
+	disabledBtnStyle := btnFrame.
+		BorderForeground(lipgloss.Color("#525252")).
+		Foreground(lipgloss.Color("#525252"))
 
-func (m *MainModel) ButtonStyler(content string, kind Button, disabled bool) string {
 	style := baseBtnStyle
 	if disabled {
 		style = disabledBtnStyle
 	} else {
-		if kind == m.hovered {
+		if kind == hovered {
 			style = hoveredBtnStyle
 		}
-		if kind == m.clicked {
+		if kind == clicked {
 			style = activeBtnStyle
 		}
 	}
@@ -251,13 +232,13 @@ func (m MainModel) View() string {
 			Render(
 				func() string {
 					var sb strings.Builder
-					if m.isPolling {
-						sb.WriteString(m.spinner.View())
+					if isPolling {
+						sb.WriteString(theSpinner.View())
 						sb.WriteString("  ")
 					} else {
 						sb.WriteString("🛑 ")
 					}
-					sb.WriteString(m.lastViewPath)
+					sb.WriteString(lastViewPath)
 					return sb.String()
 				}(),
 			),
@@ -265,20 +246,20 @@ func (m MainModel) View() string {
 		lipgloss.NewStyle().Margin(0, 0, 0, 2).Render(
 			lipgloss.JoinHorizontal(
 				lipgloss.Top,
-				m.ButtonStyler(
+				ButtonStyler(
 					"Disable Polling",
 					DisablePollingBtn,
-					!m.isPolling,
+					!isPolling,
 				),
-				m.ButtonStyler(
+				ButtonStyler(
 					"Enable Polling",
 					EnablePollingBtn,
-					m.isPolling,
+					isPolling,
 				),
-				m.ButtonStyler(
+				ButtonStyler(
 					"Cancel Task",
 					CancelTaskBtn,
-					!m.someTaskRunning,
+					!taskRunning,
 				),
 			),
 		),
@@ -286,40 +267,40 @@ func (m MainModel) View() string {
 		lipgloss.NewStyle().Margin(0, 0, 0, 2).Render(
 			lipgloss.JoinHorizontal(
 				lipgloss.Top,
-				m.ButtonStyler(
+				ButtonStyler(
 					"Artefact",
 					ArtefactBtn,
-					m.someTaskRunning,
+					taskRunning,
 				),
-				m.ButtonStyler(
+				ButtonStyler(
 					"All 2 Lossless JPEG-XL",
 					JxlBtn,
-					m.someTaskRunning,
+					taskRunning,
 				),
-				m.ButtonStyler(
+				ButtonStyler(
 					"PNG 2 Lossy JPEG-XL",
 					LossyJxlBtn,
-					m.someTaskRunning,
+					taskRunning,
 				),
 			),
 		),
 		lipgloss.NewStyle().Margin(0, 0, 0, 2).Render(
 			lipgloss.JoinHorizontal(
 				lipgloss.Top,
-				m.ButtonStyler(
+				ButtonStyler(
 					"JPEG-XL 2 PNG, JPG",
 					DjxlBtn,
-					m.someTaskRunning,
+					taskRunning,
 				),
-				m.ButtonStyler(
+				ButtonStyler(
 					"PAR2 from 7z",
 					Par2Btn,
-					m.someTaskRunning,
+					taskRunning,
 				),
-				m.ButtonStyler(
+				ButtonStyler(
 					"Start Task",
 					StartTaskBtn,
-					m.someTaskRunning,
+					taskRunning,
 				),
 			),
 		),
@@ -335,7 +316,7 @@ func main() {
 	zone.NewGlobal()
 	defer zone.Close()
 
-	p := tea.NewProgram(newMainModel(), tea.WithAltScreen(), tea.WithMouseCellMotion())
+	p := tea.NewProgram(MainModel{}, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Alas, there's been an error: %v", err)
 		os.Exit(1)
