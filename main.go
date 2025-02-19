@@ -45,7 +45,6 @@ var (
 type MainModel struct {
 	lastViewPath    string
 	isPolling       bool
-	clicked         *Button
 	hovered         *Button
 	someTaskRunning bool
 
@@ -59,7 +58,6 @@ func NewMainModel() MainModel {
 	return MainModel{
 		lastViewPath:    "",
 		isPolling:       true,
-		clicked:         &NoneButton,
 		hovered:         &NoneButton,
 		someTaskRunning: false,
 
@@ -72,7 +70,7 @@ func NewMainModel() MainModel {
 	}
 }
 
-func (m *MainModel) SpawnTask(fn func(ctx context.Context)) {
+func (m *MainModel) SpawnTask(fn func(ctx context.Context, sendWarning func(error), updateProgressBase func(func() float64) func())) {
 	if m.someTaskRunning {
 		return
 	}
@@ -81,7 +79,17 @@ func (m *MainModel) SpawnTask(fn func(ctx context.Context)) {
 	taskCtx, taskCancel = context.WithCancel(context.Background())
 	go func() {
 		someTaskRunningChan <- true
-		fn(taskCtx)
+		fn(
+			taskCtx,
+			func(warn error) {
+				go func() { warnChan <- warn }()
+			},
+			func(f func() float64) func() {
+				return func() {
+					go func() { setProgressChan <- f() }()
+				}
+			},
+		)
 		someTaskRunningChan <- false
 		setProgressChan <- 0
 	}()
@@ -169,46 +177,36 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		if msg.Button == tea.MouseButtonLeft { // aka onClick
-			m.clicked = &NoneButton
 			switch {
 			case zone.Get(EnablePollingButton.ID).InBounds(msg):
 				if !m.isPolling {
 					pollLastViewPathTicker.Reset(500 * time.Millisecond)
 					m.isPolling = true
-					m.clicked = &EnablePollingButton
 				}
 			case zone.Get(DisablePollingButton.ID).InBounds(msg):
 				if m.isPolling {
 					pollLastViewPathTicker.Stop()
 					m.isPolling = false
-					m.clicked = &DisablePollingButton
 				}
 			case zone.Get(CancelTaskButton.ID).InBounds(msg):
 				taskCancel()
 				go func() { setProgressChan <- 0 }()
-				m.clicked = &CancelTaskButton
 			case zone.Get(StartTaskButton.ID).InBounds(msg):
 				if !m.someTaskRunning {
-					m.clicked = &StartTaskButton
-					m.SpawnTask(func(ctx context.Context) {
-						tasks.ExampleTask(ctx, setProgressChan, warnChan)
+					m.SpawnTask(func(ctx context.Context, sendWarning func(error), updateProgressBase func(func() float64) func()) {
+						tasks.ExampleTask(ctx, updateProgressBase, sendWarning)
 					})
 				}
 			case zone.Get(ArtefactButton.ID).InBounds(msg):
-				m.clicked = &ArtefactButton
 			case zone.Get(DjxlButton.ID).InBounds(msg):
 				if !m.someTaskRunning {
-					m.clicked = &DjxlButton
-					m.SpawnTask(func(ctx context.Context) {
-						tasks.DjxlToJpgPng(ctx, m.lastViewPath, 1, setProgressChan, warnChan)
+					m.SpawnTask(func(ctx context.Context, sendWarning func(error), updateProgressBase func(func() float64) func()) {
+						tasks.DjxlToJpgPng(ctx, m.lastViewPath, 1, updateProgressBase, sendWarning)
 					})
 				}
 			case zone.Get(JxlButton.ID).InBounds(msg):
-				m.clicked = &JxlButton
 			case zone.Get(LossyJxlButton.ID).InBounds(msg):
-				m.clicked = &LossyJxlButton
 			case zone.Get(Par2Button.ID).InBounds(msg):
-				m.clicked = &Par2Button
 			}
 		}
 	case tea.KeyMsg:
@@ -250,18 +248,10 @@ func (m MainModel) View() string {
 			style = btnFrame.
 				BorderForeground(lipgloss.Color("#525252")).
 				Foreground(lipgloss.Color("#525252"))
-		} else {
-			if *m.hovered == *b {
-				style = btnFrame.
-					Border(lipgloss.DoubleBorder()).
-					Foreground(lipgloss.Color("#FFF7DB"))
-			}
-			if *m.clicked == *b {
-				style = btnFrame.
-					Background(lipgloss.Color("#F25D94")).
-					Foreground(lipgloss.Color("#FFF7DB")).
-					Bold(true)
-			}
+		} else if *m.hovered == *b {
+			style = btnFrame.
+				Border(lipgloss.DoubleBorder()).
+				Foreground(lipgloss.Color("#FFF7DB"))
 		}
 		return zone.Mark(b.ID, style.Render(b.Label))
 	}
