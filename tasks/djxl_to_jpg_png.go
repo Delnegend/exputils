@@ -20,13 +20,13 @@ func DjxlToJpgPng(
 	ctx context.Context,
 	parentDir string,
 	poolSize int,
-	setProgressChan chan<- float64,
-	warnChan chan<- error,
+	updateProgressBase func(func() float64) func(),
+	sendWarning func(error),
 ) {
 	jxlFiles := []os.DirEntry{}
 	entries, err := os.ReadDir(parentDir)
 	if err != nil {
-		warnChan <- fmt.Errorf("can't read directory: %w", err)
+		sendWarning(fmt.Errorf("can't read directory: %w", err))
 		return
 	}
 	for _, entry := range entries {
@@ -39,25 +39,19 @@ func DjxlToJpgPng(
 	}
 
 	if len(jxlFiles) == 0 {
-		warnChan <- fmt.Errorf("no jxl files found")
+		sendWarning(fmt.Errorf("no jxl files found"))
 		return
 	}
 
 	processedFiles := 0
 	var progressMutex sync.Mutex
 
-	updateProgress := func() {
+	updateProgress := updateProgressBase(func() float64 {
 		progressMutex.Lock()
 		defer progressMutex.Unlock()
 		processedFiles++
-		go func(processedFiles int) {
-			setProgressChan <- float64(processedFiles) / float64(len(jxlFiles))
-		}(processedFiles)
-	}
-
-	sendWarning := func(err error) {
-		go func(err error) { warnChan <- err }(err)
-	}
+		return float64(processedFiles) / float64(len(jxlFiles))
+	})
 
 	pool := utils.NewWorkerPool(ctx, poolSize)
 	defer pool.Close()
@@ -150,5 +144,5 @@ func DjxlToJpgPng(
 	}
 
 	pool.Wait()
-	setProgressChan <- 1
+	updateProgressBase(func() float64 { return 1 })()
 }
