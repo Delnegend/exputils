@@ -25,12 +25,12 @@ var (
 	DisablePollingButton = Button{"disable-polling", "Disable Polling"}
 	CancelTaskButton     = Button{"cancel-task", "Cancel Task"}
 
-	StartTaskButton = Button{"start-task", "Start Task"}
+	StartTaskButton = Button{"start-task", "Demo Task"}
 	ArtefactButton  = Button{"artefact", "Artefact"}
-	DjxlButton      = Button{"djxl", "JPEG-XL 2 PNG, JPG"}
-	JxlButton       = Button{"jxl", "All 2 Lossless JPEG-XL"}
-	LossyJxlButton  = Button{"lossy-jxl", "PNG 2 Lossy JPEG-XL"}
-	Par2Button      = Button{"par2", "PAR2 from 7z"}
+	DjxlButton      = Button{"djxl", "DJXL"}
+	JxlButton       = Button{"jxl", "Lossless JXL"}
+	LossyJxlButton  = Button{"lossy-jxl", "Lossy JXL"}
+	Par2Button      = Button{"par2", "PAR2"}
 
 	someTaskRunningChan = make(chan bool)
 	warnChan            = make(chan error)
