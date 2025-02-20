@@ -12,10 +12,11 @@ import (
 	"sync"
 )
 
-func JxlLossLess(
+func Cjxl(
 	ctx context.Context,
 	parentDir string,
 	poolSize int,
+	outputLossy bool,
 	updateProgressBase func(func() float64) func(),
 	sendWarning func(error),
 ) {
@@ -70,6 +71,11 @@ func JxlLossLess(
 
 	pool := utils.NewWorkerPool(ctx, poolSize)
 
+	distance := "0"
+	if outputLossy {
+		distance = "1"
+	}
+
 	for _, file := range jpgPngFiles {
 		fileName := file.Name()
 		pool.Run(func() {
@@ -79,7 +85,7 @@ func JxlLossLess(
 			outputFile := utils.ReplaceExt(inputFile, ".jxl")
 
 			// convert jpg/png to jxl
-			cmd := exec.CommandContext(ctx, "djxl", inputFile, outputFile, "-d", "0", "-e", "9")
+			cmd := exec.CommandContext(ctx, "djxl", inputFile, outputFile, "-d", distance, "-e", "9")
 			outputMsgBytes, err := cmd.CombinedOutput()
 			outputMsgString := string(outputMsgBytes)
 			switch {
