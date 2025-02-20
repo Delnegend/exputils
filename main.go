@@ -187,39 +187,39 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.hovered = &Par2Button
 			}
 		}
-		if msg.Button == tea.MouseButtonLeft { // aka onClick
-			switch {
-			case zone.Get(EnablePollingButton.ID).InBounds(msg):
-				if !m.isPolling {
-					pollLastViewPathTicker.Reset(500 * time.Millisecond)
-					m.isPolling = true
-				}
-			case zone.Get(DisablePollingButton.ID).InBounds(msg):
-				if m.isPolling {
-					pollLastViewPathTicker.Stop()
-					m.isPolling = false
-				}
-			case zone.Get(CancelTaskButton.ID).InBounds(msg):
-				taskCancel()
-				go func() { setProgressChan <- 0 }()
-			case zone.Get(StartTaskButton.ID).InBounds(msg):
-				if !m.someTaskRunning {
-					m.SpawnTask(func(ctx context.Context, sendWarning func(error), updateProgressBase func(func() float64) func()) {
-						tasks.ExampleTask(ctx, updateProgressBase, sendWarning)
-					})
-				}
-			case zone.Get(ArtefactButton.ID).InBounds(msg):
-			case zone.Get(DjxlButton.ID).InBounds(msg):
-				if !m.someTaskRunning {
-					m.SpawnTask(func(ctx context.Context, sendWarning func(error), updateProgressBase func(func() float64) func()) {
-						tasks.DjxlToJpgPng(ctx, m.lastViewPath, 1, updateProgressBase, sendWarning)
-					})
-				}
-			case zone.Get(JxlButton.ID).InBounds(msg):
-			case zone.Get(LossyJxlButton.ID).InBounds(msg):
-			case zone.Get(Par2Button.ID).InBounds(msg):
-			}
+
+		if msg.Button != tea.MouseButtonLeft {
+			break
 		}
+
+		switch { // aka onClick
+		case zone.Get(EnablePollingButton.ID).InBounds(msg):
+			go func() { isPollingChan <- true }()
+		case zone.Get(DisablePollingButton.ID).InBounds(msg):
+			go func() { isPollingChan <- false }()
+		case zone.Get(CancelTaskButton.ID).InBounds(msg):
+			taskCancel()
+			go func() { setProgressChan <- 0 }()
+		case zone.Get(StartTaskButton.ID).InBounds(msg):
+			m.SpawnTask(func(ctx context.Context, sendWarning func(error), updateProgressBase func(func() float64) func()) {
+				tasks.ExampleTask(ctx, updateProgressBase, sendWarning)
+			})
+		case zone.Get(ArtefactButton.ID).InBounds(msg):
+			m.SpawnTask(func(ctx context.Context, sendWarning func(error), updateProgressBase func(func() float64) func()) {
+				tasks.Artefact(ctx, m.lastViewPath, 3, updateProgressBase, sendWarning)
+			})
+		case zone.Get(DjxlButton.ID).InBounds(msg):
+			m.SpawnTask(func(ctx context.Context, sendWarning func(error), updateProgressBase func(func() float64) func()) {
+				tasks.Djxl(ctx, m.lastViewPath, 1, updateProgressBase, sendWarning)
+			})
+		case zone.Get(JxlButton.ID).InBounds(msg):
+		case zone.Get(LossyJxlButton.ID).InBounds(msg):
+		case zone.Get(Par2Button.ID).InBounds(msg):
+			m.SpawnTask(func(ctx context.Context, sendWarning func(error), updateProgressBase func(func() float64) func()) {
+				tasks.Par2(ctx, m.lastViewPath, 2, updateProgressBase, sendWarning)
+			})
+		}
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
