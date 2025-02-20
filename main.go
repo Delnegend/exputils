@@ -135,23 +135,29 @@ func (m MainModel) Init() tea.Cmd {
 // and send messages there instead
 func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
+
 	case progress.FrameMsg:
 		progressModel, cmd := m.progress.Update(msg)
 		m.progress = progressModel.(progress.Model)
 		return m, cmd
+
 	case SetProgressPercentMsg:
 		cmd := m.progress.SetPercent(msg.value)
 		return m, tea.Batch(cmd, FetchSetProgressPercent)
+
 	case NewLastViewPathMsg:
 		m.lastViewPath = msg.path
 		return m, FetchLatestViewPath
+
 	case SomeTaskRunningMsg:
 		m.someTaskRunning = msg.running
 		return m, FetchSomeTaskRunning
+
 	case WarnMsg:
 		m.accumulatedWarns = append(m.accumulatedWarns, msg.warn)
 		m.warnViewport.SetContent(func() string {
@@ -165,6 +171,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return sb.String()
 		}())
 		return m, FetchWarn
+
 	case IsPollingMsg:
 		m.isPolling = msg.polling
 		if m.isPolling {
@@ -173,6 +180,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			pollLastViewPathTicker.Stop()
 		}
 		return m, FetchIsPolling
+
 	case tea.MouseMsg:
 		m.hovered = &NoneButton
 		if msg.Action == tea.MouseActionMotion { // aka hover
