@@ -35,7 +35,7 @@ var (
 	Par2Button         = Button{"par2", "PAR2"}
 
 	isPollingChan       = make(chan bool)
-	someTaskRunningChan = make(chan bool)
+	someTaskRunningChan = make(chan *Button)
 	warnChan            = make(chan error)
 	setProgressChan     = make(chan float64)
 
@@ -49,7 +49,7 @@ type MainModel struct {
 	lastViewPath    string
 	isPolling       bool
 	hovered         *Button
-	someTaskRunning bool
+	someTaskRunning *Button
 
 	spinner          spinner.Model
 	progress         progress.Model
@@ -62,7 +62,7 @@ func NewMainModel() MainModel {
 		lastViewPath:    "",
 		isPolling:       true,
 		hovered:         &NoneButton,
-		someTaskRunning: false,
+		someTaskRunning: &NoneButton,
 
 		spinner:          spinner.New(func(m *spinner.Model) { m.Spinner = spinner.MiniDot }),
 		progress:         progress.New(progress.WithDefaultGradient(), progress.WithWidth(60)),
@@ -71,16 +71,20 @@ func NewMainModel() MainModel {
 	}
 }
 
-func (m *MainModel) SpawnTask(fn func(ctx context.Context, sendWarning func(error), updateProgressBase func(func() float64) func())) {
-	if m.someTaskRunning {
+func (m *MainModel) SpawnTask(fn func(
+	ctx context.Context,
+	sendWarning func(error),
+	updateProgressBase func(func() float64) func(),
+)) {
+	if m.someTaskRunning == &NoneButton {
 		return
 	}
 	m.accumulatedWarns = []error{}
+	go func() { warnChan <- nil }()
 
 	taskCtx, taskCancel = context.WithCancel(context.Background())
 	go func(taskCtx context.Context) {
 		isPollingChan <- false
-		someTaskRunningChan <- true
 		fn(
 			taskCtx,
 			func(warn error) {
@@ -93,13 +97,13 @@ func (m *MainModel) SpawnTask(fn func(ctx context.Context, sendWarning func(erro
 			},
 		)
 		isPollingChan <- true
-		someTaskRunningChan <- false
+		someTaskRunningChan <- &NoneButton
 		setProgressChan <- 0
 	}(taskCtx)
 }
 
 type NewLastViewPathMsg struct{ path string }
-type SomeTaskRunningMsg struct{ running bool }
+type SomeTaskRunningMsg struct{ running *Button }
 type SetProgressPercentMsg struct{ value float64 }
 type WarnMsg struct{ warn error }
 type IsPollingMsg struct{ polling bool }
@@ -219,26 +223,32 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			taskCancel()
 			go func() { setProgressChan <- 0 }()
 		case zone.Get(StartTaskButton.ID).InBounds(msg):
+			go func() { someTaskRunningChan <- &StartTaskButton }()
 			m.SpawnTask(func(ctx context.Context, sendWarning func(error), updateProgressBase func(func() float64) func()) {
 				tasks.ExampleTask(ctx, updateProgressBase, sendWarning)
 			})
 		case zone.Get(ArtefactButton.ID).InBounds(msg):
+			go func() { someTaskRunningChan <- &ArtefactButton }()
 			m.SpawnTask(func(ctx context.Context, sendWarning func(error), updateProgressBase func(func() float64) func()) {
 				tasks.Artefact(ctx, m.lastViewPath, 3, updateProgressBase, sendWarning)
 			})
 		case zone.Get(DjxlButton.ID).InBounds(msg):
+			go func() { someTaskRunningChan <- &DjxlButton }()
 			m.SpawnTask(func(ctx context.Context, sendWarning func(error), updateProgressBase func(func() float64) func()) {
 				tasks.Djxl(ctx, m.lastViewPath, 1, updateProgressBase, sendWarning)
 			})
 		case zone.Get(CjxlLosslessButton.ID).InBounds(msg):
+			go func() { someTaskRunningChan <- &CjxlLosslessButton }()
 			m.SpawnTask(func(ctx context.Context, sendWarning func(error), updateProgressBase func(func() float64) func()) {
 				tasks.Cjxl(ctx, m.lastViewPath, 2, false, updateProgressBase, sendWarning)
 			})
 		case zone.Get(CjxlLossyButton.ID).InBounds(msg):
+			go func() { someTaskRunningChan <- &CjxlLossyButton }()
 			m.SpawnTask(func(ctx context.Context, sendWarning func(error), updateProgressBase func(func() float64) func()) {
 				tasks.Cjxl(ctx, m.lastViewPath, 2, true, updateProgressBase, sendWarning)
 			})
 		case zone.Get(Par2Button.ID).InBounds(msg):
+			go func() { someTaskRunningChan <- &Par2Button }()
 			m.SpawnTask(func(ctx context.Context, sendWarning func(error), updateProgressBase func(func() float64) func()) {
 				tasks.Par2(ctx, m.lastViewPath, 2, updateProgressBase, sendWarning)
 			})
@@ -250,13 +260,13 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			taskCancel()
 			return m, tea.Quit
 		case "c":
-			if !m.someTaskRunning {
+			if m.someTaskRunning == &NoneButton {
 				break
 			}
 			taskCancel()
 			go func() {
 				setProgressChan <- 0
-				someTaskRunningChan <- false
+				someTaskRunningChan <- &NoneButton
 			}()
 		}
 	}
@@ -305,7 +315,15 @@ func (m MainModel) View() string {
 				Border(lipgloss.DoubleBorder()).
 				Foreground(lipgloss.Color("#FFF7DB"))
 		}
-		return zone.Mark(b.ID, style.Render(b.Label))
+		return zone.Mark(b.ID, style.Render(func() string {
+			var sb strings.Builder
+			if m.someTaskRunning == b {
+				sb.WriteString(m.spinner.View())
+				sb.WriteString(" ")
+			}
+			sb.WriteString(b.Label)
+			return sb.String()
+		}()))
 	}
 
 	return zone.Scan(lipgloss.JoinVertical(
@@ -325,20 +343,20 @@ func (m MainModel) View() string {
 			lipgloss.Top,
 			btnStyle(&DisablePollingButton, !m.isPolling),
 			btnStyle(&EnablePollingButton, m.isPolling),
-			btnStyle(&CancelTaskButton, !m.someTaskRunning),
+			btnStyle(&CancelTaskButton, m.someTaskRunning == &NoneButton),
 		)),
 		divider("Tasks"),
 		lipgloss.NewStyle().Margin(0, 0, 0, 2).Render(lipgloss.JoinHorizontal(
 			lipgloss.Top,
-			btnStyle(&ArtefactButton, m.someTaskRunning),
-			btnStyle(&Par2Button, m.someTaskRunning),
-			btnStyle(&StartTaskButton, m.someTaskRunning),
+			btnStyle(&ArtefactButton, m.someTaskRunning != &NoneButton),
+			btnStyle(&Par2Button, m.someTaskRunning != &NoneButton),
+			btnStyle(&StartTaskButton, m.someTaskRunning != &NoneButton),
 		)),
 		lipgloss.NewStyle().Margin(0, 0, 0, 2).Render(lipgloss.JoinHorizontal(
 			lipgloss.Top,
-			btnStyle(&CjxlLosslessButton, m.someTaskRunning),
-			btnStyle(&CjxlLossyButton, m.someTaskRunning),
-			btnStyle(&DjxlButton, m.someTaskRunning),
+			btnStyle(&CjxlLosslessButton, m.someTaskRunning != &NoneButton),
+			btnStyle(&CjxlLossyButton, m.someTaskRunning != &NoneButton),
+			btnStyle(&DjxlButton, m.someTaskRunning != &NoneButton),
 		)),
 		divider("Progress"),
 		"  "+m.progress.View(),
