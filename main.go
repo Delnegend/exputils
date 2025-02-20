@@ -25,12 +25,12 @@ var (
 	DisablePollingButton = Button{"disable-polling", "Disable Polling"}
 	CancelTaskButton     = Button{"cancel-task", "Cancel Task"}
 
-	StartTaskButton = Button{"start-task", "Demo Task"}
-	ArtefactButton  = Button{"artefact", "Artefact"}
-	DjxlButton      = Button{"djxl", "DJXL"}
-	JxlButton       = Button{"jxl", "Lossless JXL"}
-	LossyJxlButton  = Button{"lossy-jxl", "Lossy JXL"}
-	Par2Button      = Button{"par2", "PAR2"}
+	StartTaskButton    = Button{"start-task", "Demo Task"}
+	ArtefactButton     = Button{"artefact", "Artefact"}
+	DjxlButton         = Button{"djxl", "DJXL"}
+	CjxlLosslessButton = Button{"jxl", "Lossless JXL"}
+	CjxlLossyButton    = Button{"lossy-jxl", "Lossy JXL"}
+	Par2Button         = Button{"par2", "PAR2"}
 
 	isPollingChan       = make(chan bool)
 	someTaskRunningChan = make(chan bool)
@@ -179,10 +179,10 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.hovered = &ArtefactButton
 			case zone.Get(DjxlButton.ID).InBounds(msg):
 				m.hovered = &DjxlButton
-			case zone.Get(JxlButton.ID).InBounds(msg):
-				m.hovered = &JxlButton
-			case zone.Get(LossyJxlButton.ID).InBounds(msg):
-				m.hovered = &LossyJxlButton
+			case zone.Get(CjxlLosslessButton.ID).InBounds(msg):
+				m.hovered = &CjxlLosslessButton
+			case zone.Get(CjxlLossyButton.ID).InBounds(msg):
+				m.hovered = &CjxlLossyButton
 			case zone.Get(Par2Button.ID).InBounds(msg):
 				m.hovered = &Par2Button
 			}
@@ -303,8 +303,8 @@ func (m MainModel) View() string {
 		)),
 		lipgloss.NewStyle().Margin(0, 0, 0, 2).Render(lipgloss.JoinHorizontal(
 			lipgloss.Top,
-			btnStyle(&JxlButton, m.someTaskRunning),
-			btnStyle(&LossyJxlButton, m.someTaskRunning),
+			btnStyle(&CjxlLosslessButton, m.someTaskRunning),
+			btnStyle(&CjxlLossyButton, m.someTaskRunning),
 			btnStyle(&DjxlButton, m.someTaskRunning),
 		)),
 		divider,
