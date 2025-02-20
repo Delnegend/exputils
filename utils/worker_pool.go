@@ -40,10 +40,7 @@ func (p *WorkerPool) Run(task func()) {
 	}()
 }
 
-func (p *WorkerPool) Close() {
-	close(p.workers)
-}
-
-func (p *WorkerPool) Wait() {
+func (p *WorkerPool) WaitAndClose() {
 	p.wg.Wait()
+	close(p.workers)
 }
