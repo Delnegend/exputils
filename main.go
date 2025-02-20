@@ -21,8 +21,8 @@ type Button struct{ ID, Label string }
 var (
 	NoneButton = Button{"", ""}
 
-	EnablePollingButton  = Button{"enable-polling", "Enable Polling"}
-	DisablePollingButton = Button{"disable-polling", "Disable Polling"}
+	EnablePollingButton  = Button{"enable-polling", "Polling ON"}
+	DisablePollingButton = Button{"disable-polling", "Polling OFF"}
 	CancelTaskButton     = Button{"cancel-task", "Cancel Task"}
 
 	StartTaskButton    = Button{"start-task", "Demo Task"}
