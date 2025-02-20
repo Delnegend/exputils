@@ -212,8 +212,14 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.SpawnTask(func(ctx context.Context, sendWarning func(error), updateProgressBase func(func() float64) func()) {
 				tasks.Djxl(ctx, m.lastViewPath, 1, updateProgressBase, sendWarning)
 			})
-		case zone.Get(JxlButton.ID).InBounds(msg):
-		case zone.Get(LossyJxlButton.ID).InBounds(msg):
+		case zone.Get(CjxlLosslessButton.ID).InBounds(msg):
+			m.SpawnTask(func(ctx context.Context, sendWarning func(error), updateProgressBase func(func() float64) func()) {
+				tasks.Cjxl(ctx, m.lastViewPath, 2, false, updateProgressBase, sendWarning)
+			})
+		case zone.Get(CjxlLossyButton.ID).InBounds(msg):
+			m.SpawnTask(func(ctx context.Context, sendWarning func(error), updateProgressBase func(func() float64) func()) {
+				tasks.Cjxl(ctx, m.lastViewPath, 2, true, updateProgressBase, sendWarning)
+			})
 		case zone.Get(Par2Button.ID).InBounds(msg):
 			m.SpawnTask(func(ctx context.Context, sendWarning func(error), updateProgressBase func(func() float64) func()) {
 				tasks.Par2(ctx, m.lastViewPath, 2, updateProgressBase, sendWarning)
