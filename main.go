@@ -65,7 +65,7 @@ func NewMainModel() MainModel {
 		spinner: spinner.New(func(m *spinner.Model) {
 			m.Spinner = spinner.MiniDot
 		}),
-		progress: progress.New(progress.WithDefaultGradient(), progress.WithWidth(80)),
+		progress: progress.New(progress.WithDefaultGradient(), progress.WithWidth(60)),
 
 		accumulatedWarns: []error{},
 	}
@@ -242,12 +242,12 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m MainModel) View() string {
 	divider := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#666565")).
-		SetString(fmt.Sprintf("<%s>", strings.Repeat("─", 82))).
+		SetString(fmt.Sprintf("<%s>", strings.Repeat("─", 62))).
 		String()
 
 	btnStyle := func(b *Button, disabled bool) string {
 		btnFrame := lipgloss.NewStyle().
-			Width(24).
+			Width(18).
 			Align(lipgloss.Center).
 			Padding(0, 1).
 			Border(lipgloss.NormalBorder())
@@ -292,20 +292,15 @@ func (m MainModel) View() string {
 		lipgloss.NewStyle().Margin(0, 0, 0, 2).Render(lipgloss.JoinHorizontal(
 			lipgloss.Top,
 			btnStyle(&ArtefactButton, m.someTaskRunning),
-			btnStyle(&JxlButton, m.someTaskRunning),
-			btnStyle(&LossyJxlButton, m.someTaskRunning),
-		)),
-		lipgloss.NewStyle().Margin(0, 0, 0, 2).Render(lipgloss.JoinHorizontal(
-			lipgloss.Top,
-			btnStyle(&DjxlButton, m.someTaskRunning),
 			btnStyle(&Par2Button, m.someTaskRunning),
 			btnStyle(&StartTaskButton, m.someTaskRunning),
 		)),
-		divider,
-		lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#949494")).
-			PaddingLeft(2).
-			Render("q, ctrl+c: Quit | c: Cancel Task"),
+		lipgloss.NewStyle().Margin(0, 0, 0, 2).Render(lipgloss.JoinHorizontal(
+			lipgloss.Top,
+			btnStyle(&JxlButton, m.someTaskRunning),
+			btnStyle(&LossyJxlButton, m.someTaskRunning),
+			btnStyle(&DjxlButton, m.someTaskRunning),
+		)),
 		divider,
 		"  "+m.progress.View(),
 		divider,
