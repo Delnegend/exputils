@@ -260,10 +260,22 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m MainModel) View() string {
-	divider := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#666565")).
-		SetString("<" + strings.Repeat("─", 62) + ">").
-		String()
+	divider := func(title string) string {
+		var sb strings.Builder
+
+		titleLength := len(title)
+		leftPad := (62 - titleLength) / 2
+		rightPad := 62 - titleLength - leftPad
+
+		sb.WriteString("<" + strings.Repeat("─", leftPad))
+		sb.WriteString(title)
+		sb.WriteString(strings.Repeat("─", rightPad) + ">")
+
+		return lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#666565")).
+			SetString(sb.String()).
+			String()
+	}
 
 	btnStyle := func(b *Button, disabled bool) string {
 		btnFrame := lipgloss.NewStyle().
@@ -301,14 +313,13 @@ func (m MainModel) View() string {
 					return "🛑 " + m.lastViewPath
 				}
 			}()),
-		divider,
 		lipgloss.NewStyle().Margin(0, 0, 0, 2).Render(lipgloss.JoinHorizontal(
 			lipgloss.Top,
 			btnStyle(&DisablePollingButton, !m.isPolling),
 			btnStyle(&EnablePollingButton, m.isPolling),
 			btnStyle(&CancelTaskButton, !m.someTaskRunning),
 		)),
-		divider,
+		divider("Tasks"),
 		lipgloss.NewStyle().Margin(0, 0, 0, 2).Render(lipgloss.JoinHorizontal(
 			lipgloss.Top,
 			btnStyle(&ArtefactButton, m.someTaskRunning),
@@ -321,7 +332,7 @@ func (m MainModel) View() string {
 			btnStyle(&CjxlLossyButton, m.someTaskRunning),
 			btnStyle(&DjxlButton, m.someTaskRunning),
 		)),
-		divider,
+		divider("Progress"),
 		"  "+m.progress.View(),
 		divider(fmt.Sprintf("Warnings | %3.f%%", m.warnViewport.ScrollPercent()*100)),
 		m.warnViewport.View(),
