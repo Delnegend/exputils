@@ -307,9 +307,10 @@ func (m MainModel) View() string {
 		func() string {
 			var sb strings.Builder
 			for _, warn := range m.accumulatedWarns {
-				if warn != nil {
-					sb.WriteString("- " + warn.Error() + "\n")
+				if warn == nil {
+					continue
 				}
+				sb.WriteString("- " + warn.Error() + "\n")
 			}
 			return sb.String()
 		}(),
