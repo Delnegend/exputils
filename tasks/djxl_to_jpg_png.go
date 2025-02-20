@@ -56,24 +56,33 @@ func DjxlToJpgPng(
 	pool := utils.NewWorkerPool(ctx, poolSize)
 	defer pool.Close()
 
+	canContinue := true
+	for _, file := range jxlFiles {
+		inputJxlFile := filepath.Join(parentDir, file.Name())
+		outputPngFile := replaceExt(inputJxlFile, ".png")
+		outputJpgFile := replaceExt(inputJxlFile, ".jpg")
+
+		// output file already exists
+		if _, err := os.Stat(outputJpgFile); err == nil {
+			sendWarning(fmt.Errorf("possible output file '%s' already exists", outputJpgFile))
+			canContinue = false
+		}
+		if _, err := os.Stat(outputPngFile); err == nil {
+			sendWarning(fmt.Errorf("possible output file '%s' already exists", outputPngFile))
+			canContinue = false
+		}
+	}
+
+	if !canContinue {
+		return
+	}
+
 	for _, file := range jxlFiles {
 		fileName := file.Name()
 		pool.Run(func() {
 			inputJxlFile := filepath.Join(parentDir, fileName)
 			outputPngFile := replaceExt(inputJxlFile, ".png")
 			outputJpgFile := replaceExt(inputJxlFile, ".jpg")
-
-			// output file already exists
-			if _, err := os.Stat(outputJpgFile); err == nil {
-				sendWarning(fmt.Errorf("possible output file '%s' already exists", outputJpgFile))
-				updateProgress()
-				return
-			}
-			if _, err := os.Stat(outputPngFile); err == nil {
-				sendWarning(fmt.Errorf("possible output file '%s' already exists", outputPngFile))
-				updateProgress()
-				return
-			}
 
 			// try reconstruct original jpg
 			cmd := exec.CommandContext(ctx, "djxl", inputJxlFile, outputJpgFile)
