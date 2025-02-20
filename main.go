@@ -6,6 +6,7 @@ import (
 	wexpmonitor "exputils/wexp_monitor"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -326,6 +327,8 @@ func (m MainModel) View() string {
 func main() {
 	zone.NewGlobal()
 	defer zone.Close()
+
+	exec.Command("mode", "con:", "cols=64", "lines=30").Run()
 
 	p := tea.NewProgram(NewMainModel(), tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := p.Run(); err != nil {
