@@ -248,7 +248,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m MainModel) View() string {
 	divider := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#666565")).
-		SetString(fmt.Sprintf("<%s>", strings.Repeat("─", 62))).
+		SetString("<" + strings.Repeat("─", 62) + ">").
 		String()
 
 	btnStyle := func(b *Button, disabled bool) string {
