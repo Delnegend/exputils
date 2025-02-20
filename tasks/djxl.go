@@ -12,11 +12,8 @@ import (
 	"sync"
 )
 
-func replaceExt(path, newExt string) string {
-	return strings.TrimSuffix(path, filepath.Ext(path)) + newExt
-}
-
-func DjxlToJpgPng(
+// Djxl reconstructs original jpg from jxl files, if possible, else to png.
+func Djxl(
 	ctx context.Context,
 	parentDir string,
 	poolSize int,
@@ -45,7 +42,6 @@ func DjxlToJpgPng(
 
 	processedFiles := 0
 	var progressMutex sync.Mutex
-
 	updateProgress := updateProgressBase(func() float64 {
 		progressMutex.Lock()
 		defer progressMutex.Unlock()
@@ -54,13 +50,12 @@ func DjxlToJpgPng(
 	})
 
 	pool := utils.NewWorkerPool(ctx, poolSize)
-	defer pool.Close()
 
 	canContinue := true
 	for _, file := range jxlFiles {
 		inputJxlFile := filepath.Join(parentDir, file.Name())
-		outputPngFile := replaceExt(inputJxlFile, ".png")
-		outputJpgFile := replaceExt(inputJxlFile, ".jpg")
+		outputPngFile := utils.ReplaceExt(inputJxlFile, ".png")
+		outputJpgFile := utils.ReplaceExt(inputJxlFile, ".jpg")
 
 		// output file already exists
 		if _, err := os.Stat(outputJpgFile); err == nil {
@@ -80,9 +75,11 @@ func DjxlToJpgPng(
 	for _, file := range jxlFiles {
 		fileName := file.Name()
 		pool.Run(func() {
+			defer updateProgress()
+
 			inputJxlFile := filepath.Join(parentDir, fileName)
-			outputPngFile := replaceExt(inputJxlFile, ".png")
-			outputJpgFile := replaceExt(inputJxlFile, ".jpg")
+			outputPngFile := utils.ReplaceExt(inputJxlFile, ".png")
+			outputJpgFile := utils.ReplaceExt(inputJxlFile, ".jpg")
 
 			// try reconstruct original jpg
 			cmd := exec.CommandContext(ctx, "djxl", inputJxlFile, outputJpgFile)
@@ -91,13 +88,11 @@ func DjxlToJpgPng(
 			switch {
 			// error with message
 			case err != nil && outputMsgString != "":
-				sendWarning(fmt.Errorf("djxl failed to run: %s", outputMsgString))
-				updateProgress()
+				sendWarning(fmt.Errorf("djxl error: %s", outputMsgString))
 				return
 				// error without message
 			case err != nil && outputMsgString == "":
-				sendWarning(fmt.Errorf("djxl failed to run but didn't output anything"))
-				updateProgress()
+				sendWarning(fmt.Errorf("djxl error but didn't output anything"))
 				return
 				// success, reconstructed original jpg
 			case err == nil && !strings.Contains(outputMsgString, "Warning: could not decode losslessly to JPEG"):
@@ -107,13 +102,11 @@ func DjxlToJpgPng(
 				} else if err != nil {
 					sendWarning(fmt.Errorf("can't check if output file exists: %w", err))
 				}
-				updateProgress()
 				return
 			}
 
 			if err := os.Remove(outputJpgFile); err != nil {
 				sendWarning(fmt.Errorf("can't remove output file: %w", err))
-				updateProgress()
 				return
 			}
 
@@ -125,18 +118,15 @@ func DjxlToJpgPng(
 			switch {
 			// error with message
 			case err != nil && outputMsgString != "":
-				sendWarning(fmt.Errorf("djxl failed to run: %s", outputMsgString))
-				updateProgress()
+				sendWarning(fmt.Errorf("djxl error: %s", outputMsgString))
 				return
 			// error without message
 			case err != nil && outputMsgString == "":
-				sendWarning(fmt.Errorf("djxl failed to run but didn't output anything"))
-				updateProgress()
+				sendWarning(fmt.Errorf("djxl error but didn't output anything"))
 				return
 			// error expect message not found
 			case err == nil && !strings.Contains(outputMsgString, "Decoded to pixels."):
 				sendWarning(fmt.Errorf("expecting 'Decoded to pixels.' in output: %s", outputMsgString))
-				updateProgress()
 				return
 			}
 
@@ -147,11 +137,9 @@ func DjxlToJpgPng(
 			} else if err != nil {
 				sendWarning(fmt.Errorf("can't check if output file exists: %w", err))
 			}
-
-			updateProgress()
 		})
 	}
 
-	pool.Wait()
+	pool.WaitAndClose()
 	updateProgressBase(func() float64 { return 1 })()
 }
