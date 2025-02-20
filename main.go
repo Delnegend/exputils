@@ -12,6 +12,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	zone "github.com/lrstanley/bubblezone"
@@ -50,9 +51,9 @@ type MainModel struct {
 	hovered         *Button
 	someTaskRunning bool
 
-	spinner  spinner.Model
-	progress progress.Model
-
+	spinner          spinner.Model
+	progress         progress.Model
+	warnViewport     viewport.Model
 	accumulatedWarns []error
 }
 
@@ -63,11 +64,9 @@ func NewMainModel() MainModel {
 		hovered:         &NoneButton,
 		someTaskRunning: false,
 
-		spinner: spinner.New(func(m *spinner.Model) {
-			m.Spinner = spinner.MiniDot
-		}),
-		progress: progress.New(progress.WithDefaultGradient(), progress.WithWidth(60)),
-
+		spinner:          spinner.New(func(m *spinner.Model) { m.Spinner = spinner.MiniDot }),
+		progress:         progress.New(progress.WithDefaultGradient(), progress.WithWidth(60)),
+		warnViewport:     viewport.New(60, 16),
 		accumulatedWarns: []error{},
 	}
 }
@@ -155,6 +154,16 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, FetchSomeTaskRunning
 	case WarnMsg:
 		m.accumulatedWarns = append(m.accumulatedWarns, msg.warn)
+		m.warnViewport.SetContent(func() string {
+			var sb strings.Builder
+			for _, warn := range m.accumulatedWarns {
+				if warn == nil {
+					continue
+				}
+				sb.WriteString("- " + warn.Error() + "\n")
+			}
+			return sb.String()
+		}())
 		return m, FetchWarn
 	case IsPollingMsg:
 		m.isPolling = msg.polling
@@ -243,7 +252,11 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}()
 		}
 	}
-	return m, nil
+
+	var viewportCmd tea.Cmd
+	m.warnViewport, viewportCmd = m.warnViewport.Update(msg)
+
+	return m, viewportCmd
 }
 
 func (m MainModel) View() string {
@@ -310,17 +323,8 @@ func (m MainModel) View() string {
 		)),
 		divider,
 		"  "+m.progress.View(),
-		divider,
-		func() string {
-			var sb strings.Builder
-			for _, warn := range m.accumulatedWarns {
-				if warn == nil {
-					continue
-				}
-				sb.WriteString("- " + warn.Error() + "\n")
-			}
-			return sb.String()
-		}(),
+		divider(fmt.Sprintf("Warnings | %3.f%%", m.warnViewport.ScrollPercent()*100)),
+		m.warnViewport.View(),
 	))
 }
 
