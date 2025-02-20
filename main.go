@@ -76,7 +76,7 @@ func (m *MainModel) SpawnTask(fn func(ctx context.Context, sendWarning func(erro
 		return
 	}
 	m.accumulatedWarns = []error{}
-	taskCancel()
+
 	taskCtx, taskCancel = context.WithCancel(context.Background())
 	go func(taskCtx context.Context) {
 		isPollingChan <- false
