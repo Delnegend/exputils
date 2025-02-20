@@ -226,13 +226,14 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			taskCancel()
 			return m, tea.Quit
 		case "c":
-			if m.someTaskRunning {
-				taskCancel()
-				go func() {
-					setProgressChan <- 0
-					someTaskRunningChan <- false
-				}()
+			if !m.someTaskRunning {
+				break
 			}
+			taskCancel()
+			go func() {
+				setProgressChan <- 0
+				someTaskRunningChan <- false
+			}()
 		}
 	}
 	return m, nil
