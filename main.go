@@ -32,6 +32,7 @@ var (
 	LossyJxlButton  = Button{"lossy-jxl", "Lossy JXL"}
 	Par2Button      = Button{"par2", "PAR2"}
 
+	isPollingChan       = make(chan bool)
 	someTaskRunningChan = make(chan bool)
 	warnChan            = make(chan error)
 	setProgressChan     = make(chan float64)
@@ -77,7 +78,8 @@ func (m *MainModel) SpawnTask(fn func(ctx context.Context, sendWarning func(erro
 	m.accumulatedWarns = []error{}
 	taskCancel()
 	taskCtx, taskCancel = context.WithCancel(context.Background())
-	go func() {
+	go func(taskCtx context.Context) {
+		isPollingChan <- false
 		someTaskRunningChan <- true
 		fn(
 			taskCtx,
@@ -90,20 +92,23 @@ func (m *MainModel) SpawnTask(fn func(ctx context.Context, sendWarning func(erro
 				}
 			},
 		)
+		isPollingChan <- true
 		someTaskRunningChan <- false
 		setProgressChan <- 0
-	}()
+	}(taskCtx)
 }
 
 type NewLastViewPathMsg struct{ path string }
 type SomeTaskRunningMsg struct{ running bool }
 type SetProgressPercentMsg struct{ value float64 }
 type WarnMsg struct{ warn error }
+type IsPollingMsg struct{ polling bool }
 
 func FetchLatestViewPath() tea.Msg     { return NewLastViewPathMsg{<-lastViewPathChan} }
 func FetchSomeTaskRunning() tea.Msg    { return SomeTaskRunningMsg{<-someTaskRunningChan} }
 func FetchSetProgressPercent() tea.Msg { return SetProgressPercentMsg{<-setProgressChan} }
 func FetchWarn() tea.Msg               { return WarnMsg{<-warnChan} }
+func FetchIsPolling() tea.Msg          { return IsPollingMsg{<-isPollingChan} }
 
 func (m MainModel) Init() tea.Cmd {
 	go func() {
@@ -121,6 +126,7 @@ func (m MainModel) Init() tea.Cmd {
 		FetchSomeTaskRunning,
 		FetchSetProgressPercent,
 		FetchWarn,
+		FetchIsPolling,
 	)
 }
 
@@ -145,13 +151,18 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, FetchLatestViewPath
 	case SomeTaskRunningMsg:
 		m.someTaskRunning = msg.running
-		if !m.someTaskRunning {
-			go func() { setProgressChan <- 0 }()
-		}
 		return m, FetchSomeTaskRunning
 	case WarnMsg:
 		m.accumulatedWarns = append(m.accumulatedWarns, msg.warn)
 		return m, FetchWarn
+	case IsPollingMsg:
+		m.isPolling = msg.polling
+		if m.isPolling {
+			pollLastViewPathTicker.Reset(500 * time.Millisecond)
+		} else {
+			pollLastViewPathTicker.Stop()
+		}
+		return m, FetchIsPolling
 	case tea.MouseMsg:
 		m.hovered = &NoneButton
 		if msg.Action == tea.MouseActionMotion { // aka hover
